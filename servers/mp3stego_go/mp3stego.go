@@ -342,44 +342,24 @@ func cmdBruteforce(cmdID string, params map[string]interface{}, coverPath string
 			os.MkdirAll(workerDir, 0755)
 			
 			// Create a symlink or copy the tables directory
-			var tablesSrc string
-			if embeddedBinPath != "" {
-				tablesSrc = filepath.Join(embeddedBinPath, "tables")
-			} else {
-				tablesSrc = filepath.Join(".", "tables")
-				exePath, err := os.Executable()
-				if err == nil {
-					tablesSrc = filepath.Join(filepath.Dir(exePath), "tables")
-				}
-			}
-			
-			tablesDst := filepath.Join(workerDir, "tables")
-			err := copyDir(tablesSrc, tablesDst)
-			if err != nil {
-				fmt.Println("Warning: Failed to copy tables dir for worker", workerID, err)
-			}
+			ensureTablesInDir(workerDir)
 
 			// Each worker needs its own copy of the cover file to prevent access conflicts
-			workerCover := filepath.Join(workerDir, fmt.Sprintf("file%s", filepath.Ext(coverPath)))
+			relCover := fmt.Sprintf("file%s", filepath.Ext(coverPath))
+			workerCover := filepath.Join(workerDir, relCover)
 			copyFile(coverPath, workerCover)
 			defer os.RemoveAll(workerDir) // Cleanup entire worker dir
 
 			for job := range jobs {
-				workerOutput := workerCover + ".txt"
+				relOutput := relCover + ".txt"
+				workerOutput := filepath.Join(workerDir, relOutput)
 				
-				cmd := exec.Command(getDecodeBin(), "-X", "-P", job.Password, workerCover)
+				cmd := exec.Command(getDecodeBin(), "-X", "-P", job.Password, relCover)
 				if runtime.GOOS == "windows" {
 					cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 				}
-				// Set CWD for the background goroutine too
-				if embeddedBinPath != "" {
-					cmd.Dir = embeddedBinPath
-				} else {
-					exePath, err := os.Executable()
-					if err == nil {
-						cmd.Dir = filepath.Dir(exePath)
-					}
-				}
+				// Run inside Sandbox to avoid Path Parsing bugs
+				cmd.Dir = workerDir
 				
 				// Run silently with timeout
 				done := make(chan error, 1)
@@ -399,8 +379,26 @@ func cmdBruteforce(cmdID string, params map[string]interface{}, coverPath string
 						textStr := strings.TrimSpace(string(content))
 						
 						// Basic Gibberish check matching Python version
-						// This could be expanded based on user requirements.
 						if len(textStr) > 0 {
+							checkGibberish, _ := params["check_gibberish"].(bool)
+							if checkGibberish {
+								validChars := 0
+								replacements := 0
+								for _, r := range textStr {
+									if (r >= 32 && r < 127) || r == '\n' || r == '\r' || r == '\t' {
+										validChars++
+									}
+									if r == '\ufffd' {
+										replacements++
+									}
+								}
+								ratio := float64(validChars) / float64(len(textStr))
+								if ratio < 0.7 || replacements > 3 {
+									results <- BruteResult{Password: job.Password, Success: false}
+									os.Remove(workerOutput)
+									continue
+								}
+							}
 							results <- BruteResult{Password: job.Password, Success: true, Text: textStr}
 						} else {
 							results <- BruteResult{Password: job.Password, Success: false}

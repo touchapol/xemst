@@ -1,7 +1,3 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 # XemST
 ระบบจัดการ ซ่อน ถอดรหัส และเจาะรหัสผ่าน (Brute Force) ของเทคนิค Steganography ผ่านหน้า Web Browser ที่ทันสมัยและใช้งานง่าย รองรับทั้งไฟล์เสียง (MP3, WAV, AU) เลียนแบบเครื่องมือ MP3Stego และไฟล์รูปภาพ (JPEG, BMP) เลียนแบบเครื่องมือ Steghide / StegCracker
 
